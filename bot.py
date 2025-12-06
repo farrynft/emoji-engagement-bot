@@ -55,7 +55,7 @@ def reset_daily_data():
         'date': datetime.now().date()
     }
     
-    logger.info("✅ Günlük veriler sıfırlandı (03:00)")
+    logger.info("Günlük veriler sıfırlandı (03:00)")
 
 async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
     """Günlük rapor gönder (03:00'da)"""
@@ -81,7 +81,7 @@ async def send_daily_report(context: ContextTypes.DEFAULT_TYPE):
         text=report
     )
     
-    logger.info("✅ Günlük rapor admin'e gönderildi")
+    logger.info("Günlük rapor admin'e gönderildi")
 
 async def schedule_daily_reset(application: Application):
     """Her gün 03:00'da reset yap"""
@@ -97,11 +97,11 @@ async def schedule_daily_reset(application: Application):
         
         wait_seconds = (reset_time - now).total_seconds()
         
-        logger.info(f"⏰ Bir sonraki reset: {reset_time.strftime('%d.%m.%Y 03:00')}")
+        logger.info(f"Bir sonraki reset: {reset_time.strftime('%d.%m.%Y 03:00')}")
         
         await asyncio.sleep(wait_seconds)
         
-        logger.info("🔄 Günlük reset başlıyor...")
+        logger.info("Günlük reset başlıyor...")
         
         await send_daily_report(application)
         reset_daily_data()
@@ -163,7 +163,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = user.username or user.first_name
     link = urls[0]
     
-    logger.info(f"📝 Link paylaşımı: @{username}")
+    logger.info(f"Link paylaşımı: @{username}")
     
     try:
         await update.message.delete()
@@ -206,7 +206,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
             
-            logger.info(f"⏳ Cooldown: @{username} - {links_since}/20")
+            logger.info(f"Cooldown: @{username} - {links_since}/20")
             return
     
     # KONTROL 2: EMOJİ
@@ -267,10 +267,10 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if len(LAST_MESSAGES) > 30:
                 LAST_MESSAGES.pop(0)
             
-            logger.info(f"✅ Link paylaşıldı: #{message_counter} - @{username}")
+            logger.info(f"Link paylaşıldı: #{message_counter} - @{username}")
             
         except Exception as e:
-            logger.error(f"❌ Link paylaşılamadı: {e}")
+            logger.error(f"Link paylaşılamadı: {e}")
         
         await send_rules(context)
             
@@ -303,12 +303,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             pass
         
-        logger.warning(f"❌ Emoji eksik: @{username} - {engaged_count}/{required_count}")
+        logger.warning(f"Emoji eksik: @{username} - {engaged_count}/{required_count}")
 
 async def post_init(application: Application):
     """Bot başladıktan sonra çalışacak"""
     asyncio.create_task(schedule_daily_reset(application))
-    logger.info(f"✅ Günlük reset scheduler başlatıldı")
+    logger.info("Günlük reset scheduler başlatıldı")
 
 def main():
     """Bot'u başlat"""
@@ -320,33 +320,16 @@ def main():
         handle_link
     ))
     
-    logger.info(f"")
-    logger.info(f"🤖 EMOJİ MODU BOT BAŞLATILDI")
-    logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    logger.info(f"📍 Group ID: {GROUP_ID}")
-    logger.info(f"📍 Topic ID: {TOPIC_ID}")
-    logger.info(f"📊 Günlük sayaç: #{message_counter}")
-    logger.info(f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-    logger.info(f"")
+    logger.info("")
+    logger.info("EMOJİ MODU BOT BAŞLATILDI")
+    logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    logger.info(f"Group ID: {GROUP_ID}")
+    logger.info(f"Topic ID: {TOPIC_ID}")
+    logger.info(f"Günlük sayaç: #{message_counter}")
+    logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+    logger.info("")
     
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main()
-```
-
-5. **"Commit changes"** tıkla
-
----
-
-## **Railway Otomatik Deploy Edecek:**
-
-1-2 dakika sonra **temiz çalışacak!**
-```
-🤖 EMOJİ MODU BOT BAŞLATILDI
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📍 Group ID: -1002158416026
-📍 Topic ID: 33348
-📊 Günlük sayaç: #0
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⏰ Bir sonraki reset: 07.12.2025 03:00
