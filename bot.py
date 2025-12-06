@@ -142,30 +142,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     global message_counter
     
-   async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Kullanıcı link paylaştığında"""
-    
-    global message_counter
-    
     # Mesaj yoksa çık
     if not update.message:
         return
     
     if update.message.chat.id != GROUP_ID:
-```
-
-5. **"Commit changes"** tıkla
-
----
-
-## **Railway Otomatik Deploy Edecek:**
-
-1-2 dakika sonra hatalar duracak.
-
-**Logs temiz olacak**, sadece:
-```
-🤖 EMOJİ MODU BOT BAŞLATILDI
-⏰ Bir sonraki reset: 07.12.2025 03:00
+        return
     
     message_thread_id = update.message.message_thread_id
     if message_thread_id != TOPIC_ID:
@@ -351,4 +333,20 @@ def main():
 
 if __name__ == '__main__':
     main()
+```
 
+5. **"Commit changes"** tıkla
+
+---
+
+## **Railway Otomatik Deploy Edecek:**
+
+1-2 dakika sonra **temiz çalışacak!**
+```
+🤖 EMOJİ MODU BOT BAŞLATILDI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📍 Group ID: -1002158416026
+📍 Topic ID: 33348
+📊 Günlük sayaç: #0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⏰ Bir sonraki reset: 07.12.2025 03:00
