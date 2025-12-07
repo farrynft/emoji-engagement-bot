@@ -73,6 +73,15 @@ SAATLI_RULES_TEXT = """
 {rules_channel}
 """
 
+# YÖNETİCİ KONTROLÜ
+async def is_admin(context, user_id):
+    """Kullanıcı yönetici mi?"""
+    try:
+        member = await context.bot.get_chat_member(GROUP_ID, user_id)
+        return member.status in ['creator', 'administrator']
+    except:
+        return False
+
 # EMOJİ MOD FONKSİYONLARI
 def reset_emoji_daily():
     global emoji_counter, emoji_user_last_share, emoji_user_daily_count, emoji_stats
@@ -281,20 +290,23 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     text = update.message.text or ""
-    urls = re.findall(r'https?://(?:twitter|x)\.com/\S+/status/\d+', text)
-    
-    if not urls:
-        return
-    
     user = update.message.from_user
     username = user.username or user.first_name
-    link = urls[0]
+    
+    # Twitter/X link var mı kontrol et
+    urls = re.findall(r'https?://(?:twitter|x)\.com/\S+/status/\d+', text)
     
     # EMOJİ MODU (Topic 33348)
     if topic_id == EMOJI_TOPIC_ID:
+        # LİNK YOKSA HİÇBİR ŞEY YAPMA (mesajı silme bile)
+        if not urls:
+            logger.info(f"Link yok, mesaj bırakıldı: @{username}")
+            return
+        
+        link = urls[0]
         logger.info(f"Link: @{username}")
         
-        # KULLANICI MESAJINI SİL
+        # KULLANICI MESAJINI SİL (link varsa)
         try:
             await update.message.delete()
         except Exception as e:
@@ -409,7 +421,17 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # SAATLİ MOD (Topic 16848)
     elif topic_id == SAATLI_TOPIC_ID:
+        # LİNK YOKSA HİÇBİR ŞEY YAPMA
+        if not urls:
+            return
+        
+        link = urls[0]
         logger.info(f"[SAATLİ] Link: @{username}")
+        
+        # YÖNETİCİ KONTROLÜ - YÖNETİCİYSE HİÇBİR ŞEY YAPMA
+        if await is_admin(context, user.id):
+            logger.info(f"[SAATLİ] Yönetici mesajı, dokunulmadı: @{username}")
+            return
         
         current_session = get_current_session()
         
@@ -529,7 +551,7 @@ def main():
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info(f"Group ID: {GROUP_ID}")
     logger.info(f"Emoji Topic: {EMOJI_TOPIC_ID} (15 link cooldown, 4/gün limit)")
-    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (mesaj silinmez)")
+    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (yönetici mesajları korunur)")
     logger.info(f"Timezone: UTC+3 (Türkiye)")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
