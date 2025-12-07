@@ -2,8 +2,15 @@ from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 import re
 import logging
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta, timezone
 import asyncio
+
+# TÜRKİYE TIMEZONE (UTC+3)
+TURKEY_TZ = timezone(timedelta(hours=3))
+
+def now_turkey():
+    """Türkiye saati döndür"""
+    return datetime.now(TURKEY_TZ)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -26,12 +33,12 @@ emoji_last_messages = []
 emoji_last_rules_id = None
 emoji_counter = 0
 emoji_user_last_share = {}
-emoji_user_daily_count = {}  # YENİ: Günlük sayaç
+emoji_user_daily_count = {}
 emoji_stats = {
     'links_shared': 0,
     'violations_cooldown': 0,
-    'violations_daily_limit': 0,  # YENİ
-    'date': datetime.now().date()
+    'violations_daily_limit': 0,
+    'date': now_turkey().date()
 }
 
 # SAATLİ MOD STATE
@@ -53,7 +60,7 @@ saatli_stats = {
     'rejected_duplicate': 0,
     'rejected_session_limit': 0,
     'rejected_closed': 0,
-    'date': datetime.now().date()
+    'date': now_turkey().date()
 }
 
 EMOJI_RULES_TEXT = """
@@ -71,12 +78,12 @@ def reset_emoji_daily():
     global emoji_counter, emoji_user_last_share, emoji_user_daily_count, emoji_stats
     emoji_counter = 0
     emoji_user_last_share = {}
-    emoji_user_daily_count = {}  # Günlük sayaç sıfırla
+    emoji_user_daily_count = {}
     emoji_stats = {
         'links_shared': 0,
         'violations_cooldown': 0,
         'violations_daily_limit': 0,
-        'date': datetime.now().date()
+        'date': now_turkey().date()
     }
     logger.info("Günlük veriler sıfırlandı (Emoji mod)")
 
@@ -93,17 +100,16 @@ async def emoji_daily_report(context):
    📛 Günlük limit aşımı: {emoji_stats['violations_daily_limit']} deneme
 
 ━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {now_turkey().strftime('%H:%M')}
 """
     await context.bot.send_message(chat_id=ADMIN_ID, text=report)
     logger.info("Günlük rapor gönderildi")
 
 async def emoji_schedule_reset(application):
     while True:
-        now = datetime.now()
+        now = now_turkey()
         reset_time = now.replace(hour=3, minute=0, second=0, microsecond=0)
         if now >= reset_time:
-            from datetime import timedelta
             reset_time = reset_time + timedelta(days=1)
         
         wait_seconds = (reset_time - now).total_seconds()
@@ -137,7 +143,7 @@ async def emoji_send_rules(context):
 
 # SAATLİ MOD FONKSİYONLARI
 def get_current_session():
-    now = datetime.now().time()
+    now = now_turkey().time()
     for session in SESSIONS:
         if session['start'] <= now <= session['end']:
             return session['name']
@@ -147,7 +153,7 @@ def reset_saatli_session(session_name):
     saatli_session_data[session_name] = {
         'links': [],
         'users': set(),
-        'date': datetime.now().date()
+        'date': now_turkey().date()
     }
     logger.info(f"Seans sıfırlandı: {session_name}")
 
@@ -158,7 +164,7 @@ def reset_saatli_stats():
         'rejected_duplicate': 0,
         'rejected_session_limit': 0,
         'rejected_closed': 0,
-        'date': datetime.now().date()
+        'date': now_turkey().date()
     }
 
 async def saatli_session_summary(context, session_name):
@@ -210,7 +216,7 @@ async def saatli_daily_report(context):
    ⏰ Kapalı saat: {saatli_stats['rejected_closed']}
 
 ━━━━━━━━━━━━━━━━━━━━
-⏰ {datetime.now().strftime('%H:%M')}
+⏰ {now_turkey().strftime('%H:%M')}
 """
     await context.bot.send_message(chat_id=ADMIN_ID, text=report)
     logger.info("Saatli mod günlük rapor gönderildi")
@@ -218,7 +224,7 @@ async def saatli_daily_report(context):
 
 async def saatli_schedule_sessions(application):
     while True:
-        now = datetime.now()
+        now = now_turkey()
         next_event = None
         next_event_type = None
         
@@ -236,7 +242,6 @@ async def saatli_schedule_sessions(application):
                     next_event_type = ('end', session['name'])
         
         if next_event is None:
-            from datetime import timedelta
             tomorrow = now + timedelta(days=1)
             next_event = tomorrow.replace(
                 hour=SESSIONS[0]['end'].hour,
@@ -295,7 +300,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Mesaj silinemedi: {e}")
         
-        # KONTROL 1: GÜNLÜK LİMİT (YENİ - 4 paylaşım/gün)
+        # KONTROL 1: GÜNLÜK LİMİT (4 paylaşım/gün)
         daily_count = emoji_user_daily_count.get(user.id, 0)
         
         if daily_count >= 4:
@@ -327,12 +332,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"Günlük limit: @{username} - {daily_count}/4")
             return
         
-        # KONTROL 2: COOLDOWN (15 link - DEĞİŞTİRİLDİ)
+        # KONTROL 2: COOLDOWN (15 link)
         if user.id in emoji_user_last_share:
             last_num = emoji_user_last_share[user.id]
             since = emoji_counter - last_num
             
-            if since < 15:  # 20 → 15
+            if since < 15:
                 emoji_stats['violations_cooldown'] += 1
                 remaining = 15 - since
                 
@@ -388,7 +393,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'username': username,
                 'link': link,
                 'number': emoji_counter,
-                'timestamp': datetime.now()
+                'timestamp': now_turkey()
             })
             
             emoji_user_last_share[user.id] = emoji_counter
@@ -406,9 +411,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif topic_id == SAATLI_TOPIC_ID:
         logger.info(f"[SAATLİ] Link: @{username}")
         
-        # SAATLİ MODDA MESAJ SİLME! (DÜZELTİLDİ)
-        # await update.message.delete() ← KALDIRILDI
-        
         current_session = get_current_session()
         
         # Kanal açık mı?
@@ -422,7 +424,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pass
             
             try:
-                now = datetime.now().time()
+                now = now_turkey().time()
                 next_s = None
                 for s in SESSIONS:
                     if s['start'] > now:
@@ -501,7 +503,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'user_id': user.id,
             'username': username,
             'link': link,
-            'timestamp': datetime.now()
+            'timestamp': now_turkey()
         })
         
         saatli_session_data[current_session]['users'].add(user.id)
@@ -528,6 +530,7 @@ def main():
     logger.info(f"Group ID: {GROUP_ID}")
     logger.info(f"Emoji Topic: {EMOJI_TOPIC_ID} (15 link cooldown, 4/gün limit)")
     logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (mesaj silinmez)")
+    logger.info(f"Timezone: UTC+3 (Türkiye)")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
     
