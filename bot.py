@@ -278,7 +278,12 @@ async def saatli_schedule_sessions(application):
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global emoji_counter
     
+    # SADECE MESAJLARI İŞLE
     if not update.message:
+        return
+    
+    # SADECE TEXT MESAJLARA BAK (SİSTEM MESAJLARINI ATLA)
+    if not update.message.text:
         return
     
     if update.message.chat.id != GROUP_ID:
@@ -289,7 +294,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if topic_id not in [EMOJI_TOPIC_ID, SAATLI_TOPIC_ID]:
         return
     
-    text = update.message.text or ""
+    text = update.message.text
     user = update.message.from_user
     username = user.username or user.first_name
     
@@ -428,10 +433,10 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link = urls[0]
         logger.info(f"[SAATLİ] Link: @{username}")
         
-        # YÖNETİCİ KONTROLÜ - YÖNETİCİYSE HİÇBİR ŞEY YAPMA
-        if await is_admin(context, user.id):
-            logger.info(f"[SAATLİ] Yönetici mesajı, dokunulmadı: @{username}")
-            return
+        # YÖNETİCİ KONTROLÜ - ARTIK SADECE MESAJ SİLME İÇİN
+        user_is_admin = await is_admin(context, user.id)
+        if user_is_admin:
+            logger.info(f"[SAATLİ] Yönetici mesajı tespit edildi: @{username}")
         
         current_session = get_current_session()
         
@@ -439,11 +444,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not current_session:
             saatli_stats['rejected_closed'] += 1
             
-            # Mesajı sil (kapalıysa)
-            try:
-                await update.message.delete()
-            except:
-                pass
+            # SADECE YÖNETİCİ DEĞİLSE SİL
+            if not user_is_admin:
+                try:
+                    await update.message.delete()
+                except:
+                    pass
             
             try:
                 now = now_turkey().time()
@@ -474,11 +480,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if link in saatli_all_time_links:
             saatli_stats['rejected_duplicate'] += 1
             
-            # Mesajı sil (duplicate)
-            try:
-                await update.message.delete()
-            except:
-                pass
+            # SADECE YÖNETİCİ DEĞİLSE SİL
+            if not user_is_admin:
+                try:
+                    await update.message.delete()
+                except:
+                    pass
             
             try:
                 await context.bot.send_message(
@@ -497,11 +504,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.id in saatli_session_data[current_session]['users']:
             saatli_stats['rejected_session_limit'] += 1
             
-            # Mesajı sil (seans limiti)
-            try:
-                await update.message.delete()
-            except:
-                pass
+            # SADECE YÖNETİCİ DEĞİLSE SİL
+            if not user_is_admin:
+                try:
+                    await update.message.delete()
+                except:
+                    pass
             
             try:
                 await context.bot.send_message(
@@ -516,22 +524,24 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"[SAATLİ] Seans dup: @{username}")
             return
         
-        # ✅ ONAYLANDI - MESAJ SİLİNMEDİ, KAYIT EDİLDİ
+        # ✅ ONAYLANDI - KAYIT EDİLDİ (YÖNETİCİ OLSA DAHİ)
         saatli_stats['links_shared'] += 1
         
-        # Mesaj ID'sini kaydet (kendi mesajını)
+        # Mesaj ID'sini kaydet
         saatli_session_data[current_session]['links'].append({
             'message_id': update.message.message_id,
             'user_id': user.id,
             'username': username,
             'link': link,
-            'timestamp': now_turkey()
+            'timestamp': now_turkey(),
+            'is_admin': user_is_admin
         })
         
         saatli_session_data[current_session]['users'].add(user.id)
         saatli_all_time_links.add(link)
         
-        logger.info(f"[SAATLİ] Kayıt edildi: @{username} - {current_session}")
+        admin_tag = " (MOD)" if user_is_admin else ""
+        logger.info(f"[SAATLİ] Kayıt edildi: @{username}{admin_tag} - {current_session}")
 
 async def post_init(application):
     asyncio.create_task(emoji_schedule_reset(application))
@@ -551,8 +561,9 @@ def main():
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info(f"Group ID: {GROUP_ID}")
     logger.info(f"Emoji Topic: {EMOJI_TOPIC_ID} (15 link cooldown, 4/gün limit)")
-    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (yönetici mesajları korunur)")
+    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (yönetici mesajları ÖZETE DAHİL)")
     logger.info(f"Timezone: UTC+3 (Türkiye)")
+    logger.info(f"Filter: Sadece text mesajlar")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
     
