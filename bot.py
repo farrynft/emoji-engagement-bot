@@ -12,6 +12,9 @@ def now_turkey():
     """Türkiye saati döndür"""
     return datetime.now(TURKEY_TZ)
 
+# BOT BAŞLANGIÇ ZAMANI
+BOT_START_TIME = now_turkey()
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -148,12 +151,16 @@ async def emoji_send_rules(context):
         logger.error(f"Kurallar gönderilemedi: {e}")
 
 # SAATLİ MOD FONKSİYONLARI
-def get_current_session():
-    now = now_turkey().time()
+def get_session_for_time(check_time):
+    """Belirli bir zaman için hangi seans aktif?"""
     for session in SESSIONS:
-        if session['start'] <= now <= session['end']:
+        if session['start'] <= check_time <= session['end']:
             return session['name']
     return None
+
+def get_current_session():
+    """Şu an hangi seans aktif?"""
+    return get_session_for_time(now_turkey().time())
 
 def reset_saatli_session(session_name):
     saatli_session_data[session_name] = {
@@ -277,6 +284,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # SADECE TEXT MESAJLARA BAK (SİSTEM MESAJLARINI ATLA)
     if not update.message.text:
+        return
+    
+    # ⚡ SADECE BOT BAŞLADIKTAN SONRA GELEN MESAJLARI İŞLE
+    message_date = update.message.date
+    if message_date < BOT_START_TIME:
+        logger.info(f"Eski mesaj atlandı: {message_date} < {BOT_START_TIME}")
         return
     
     if update.message.chat.id != GROUP_ID:
@@ -431,10 +444,15 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_is_admin:
             logger.info(f"[SAATLİ] Yönetici mesajı tespit edildi: @{username}")
         
-        current_session = get_current_session()
+        # ⚡ MESAJIN GÖNDERİLDİĞİ ZAMANI AL (Türkiye saatine çevir)
+        message_time_utc = update.message.date
+        message_time_turkey = message_time_utc.astimezone(TURKEY_TZ).time()
         
-        # Kanal açık mı?
-        if not current_session:
+        # O ZAMAN HANGİ SEANS AKTİFTİ?
+        message_session = get_session_for_time(message_time_turkey)
+        
+        # Kanal o zaman açık mıydı?
+        if not message_session:
             saatli_stats['rejected_closed'] += 1
             
             # SADECE YÖNETİCİ DEĞİLSE SİL
@@ -466,14 +484,14 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 pass
             
-            logger.info(f"[SAATLİ] Kapalı: @{username}")
+            logger.info(f"[SAATLİ] Kapalı saatte paylaşılmış: @{username} ({message_time_turkey.strftime('%H:%M')})")
             return
         
         # ✅ ONAYLANDI - KAYIT EDİLDİ (HİÇBİR KONTROL YOK)
         saatli_stats['links_shared'] += 1
         
         # Mesaj ID'sini kaydet
-        saatli_session_data[current_session]['links'].append({
+        saatli_session_data[message_session]['links'].append({
             'message_id': update.message.message_id,
             'user_id': user.id,
             'username': username,
@@ -482,10 +500,10 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'is_admin': user_is_admin
         })
         
-        saatli_session_data[current_session]['users'].add(user.id)
+        saatli_session_data[message_session]['users'].add(user.id)
         
         admin_tag = " (MOD)" if user_is_admin else ""
-        logger.info(f"[SAATLİ] Kayıt edildi: @{username}{admin_tag} - {current_session}")
+        logger.info(f"[SAATLİ] Kayıt edildi: @{username}{admin_tag} - {message_session}")
 
 async def post_init(application):
     asyncio.create_task(emoji_schedule_reset(application))
@@ -508,6 +526,7 @@ def main():
     logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (DUPLICATE VE LIMIT KONTROLÜ YOK)")
     logger.info(f"Timezone: UTC+3 (Türkiye)")
     logger.info(f"Seans saatleri: 09:50-12:10, 13:50-15:10, 20:50-22:10")
+    logger.info(f"Bot başlangıç: {BOT_START_TIME.strftime('%d.%m.%Y %H:%M:%S')}")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
     
