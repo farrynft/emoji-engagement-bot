@@ -15,7 +15,6 @@ TOKEN = "7958058721:AAEXx4Zw3RYj_7Bnr_eMfUWcsjlxYbsfRBk"
 ADMIN_ID = 1004037545
 GROUP_ID = -1002158416026
 
-# İKİ TOPIC
 EMOJI_TOPIC_ID = 33348
 SAATLI_TOPIC_ID = 16848
 
@@ -27,10 +26,11 @@ emoji_last_messages = []
 emoji_last_rules_id = None
 emoji_counter = 0
 emoji_user_last_share = {}
+emoji_user_daily_count = {}  # YENİ: Günlük sayaç
 emoji_stats = {
     'links_shared': 0,
-    'violations_emoji': 0,
     'violations_cooldown': 0,
+    'violations_daily_limit': 0,  # YENİ
     'date': datetime.now().date()
 }
 
@@ -68,34 +68,35 @@ SAATLI_RULES_TEXT = """
 
 # EMOJİ MOD FONKSİYONLARI
 def reset_emoji_daily():
-    global emoji_counter, emoji_user_last_share, emoji_stats
+    global emoji_counter, emoji_user_last_share, emoji_user_daily_count, emoji_stats
     emoji_counter = 0
     emoji_user_last_share = {}
+    emoji_user_daily_count = {}  # Günlük sayaç sıfırla
     emoji_stats = {
         'links_shared': 0,
-        'violations_emoji': 0,
         'violations_cooldown': 0,
+        'violations_daily_limit': 0,
         'date': datetime.now().date()
     }
-    logger.info("Emoji modu günlük veriler sıfırlandı")
+    logger.info("Günlük veriler sıfırlandı (Emoji mod)")
 
 async def emoji_daily_report(context):
     report = f"""
-📊 GÜNLÜK RAPOR (EMOJİ MODU)
+📊 GÜNLÜK RAPOR
 ━━━━━━━━━━━━━━━━━━━━
 
 📅 Tarih: {emoji_stats['date'].strftime('%d.%m.%Y')}
 
 📈 İSTATİSTİKLER:
    ✅ Toplam paylaşılan: {emoji_stats['links_shared']} link
-   ❌ Emoji eksik: {emoji_stats['violations_emoji']} kişi
    ⏳ Cooldown ihlali: {emoji_stats['violations_cooldown']} deneme
+   📛 Günlük limit aşımı: {emoji_stats['violations_daily_limit']} deneme
 
 ━━━━━━━━━━━━━━━━━━━━
-⏰ Rapor zamanı: {datetime.now().strftime('%H:%M')}
+⏰ {datetime.now().strftime('%H:%M')}
 """
     await context.bot.send_message(chat_id=ADMIN_ID, text=report)
-    logger.info("Emoji modu günlük rapor gönderildi")
+    logger.info("Günlük rapor gönderildi")
 
 async def emoji_schedule_reset(application):
     while True:
@@ -106,7 +107,7 @@ async def emoji_schedule_reset(application):
             reset_time = reset_time + timedelta(days=1)
         
         wait_seconds = (reset_time - now).total_seconds()
-        logger.info(f"Emoji mod reset: {reset_time.strftime('%d.%m.%Y 03:00')}")
+        logger.info(f"Bir sonraki reset: {reset_time.strftime('%d.%m.%Y 03:00')}")
         
         await asyncio.sleep(wait_seconds)
         await emoji_daily_report(application)
@@ -132,7 +133,7 @@ async def emoji_send_rules(context):
         )
         emoji_last_rules_id = msg.message_id
     except Exception as e:
-        logger.error(f"Emoji kurallar gönderilemedi: {e}")
+        logger.error(f"Kurallar gönderilemedi: {e}")
 
 # SAATLİ MOD FONKSİYONLARI
 def get_current_session():
@@ -148,7 +149,7 @@ def reset_saatli_session(session_name):
         'users': set(),
         'date': datetime.now().date()
     }
-    logger.info(f"Saatli mod seans sıfırlandı: {session_name}")
+    logger.info(f"Seans sıfırlandı: {session_name}")
 
 def reset_saatli_stats():
     global saatli_stats
@@ -181,7 +182,7 @@ async def saatli_session_summary(context, session_name):
         )
         logger.info(f"{session_name} özeti gönderildi: {len(session['links'])} link")
     except Exception as e:
-        logger.error(f"Saatli özet hatası: {e}")
+        logger.error(f"Özet hatası: {e}")
     
     try:
         await context.bot.send_message(
@@ -284,29 +285,67 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = user.username or user.first_name
     link = urls[0]
     
-    try:
-        await update.message.delete()
-    except Exception as e:
-        logger.error(f"Mesaj silinemedi: {e}")
-    
     # EMOJİ MODU (Topic 33348)
     if topic_id == EMOJI_TOPIC_ID:
-        logger.info(f"[EMOJI] Link: @{username}")
+        logger.info(f"Link: @{username}")
         
-        # Cooldown kontrolü
+        # KULLANICI MESAJINI SİL
+        try:
+            await update.message.delete()
+        except Exception as e:
+            logger.error(f"Mesaj silinemedi: {e}")
+        
+        # KONTROL 1: GÜNLÜK LİMİT (YENİ - 4 paylaşım/gün)
+        daily_count = emoji_user_daily_count.get(user.id, 0)
+        
+        if daily_count >= 4:
+            emoji_stats['violations_daily_limit'] += 1
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=user.id,
+                    text=f"❌ Günlük limit aşıldı!\n\n"
+                         f"Bugün {daily_count} kere paylaştın.\n"
+                         f"Günde maksimum 4 paylaşım yapabilirsin.\n\n"
+                         f"Yarın tekrar dene.\n\n"
+                         f"📚 Kurallar: {EMOJI_RULES}"
+                )
+            except:
+                pass
+            
+            try:
+                await context.bot.send_message(
+                    chat_id=ADMIN_ID,
+                    text=f"📛 GÜNLÜK LİMİT\n\n"
+                         f"@{username} (ID: {user.id})\n"
+                         f"Bugün: {daily_count}/4\n\n"
+                         f"🔗 {link}"
+                )
+            except:
+                pass
+            
+            logger.info(f"Günlük limit: @{username} - {daily_count}/4")
+            return
+        
+        # KONTROL 2: COOLDOWN (15 link - DEĞİŞTİRİLDİ)
         if user.id in emoji_user_last_share:
             last_num = emoji_user_last_share[user.id]
             since = emoji_counter - last_num
             
-            if since < 20:
+            if since < 15:  # 20 → 15
                 emoji_stats['violations_cooldown'] += 1
-                remaining = 20 - since
+                remaining = 15 - since
                 
                 try:
                     await context.bot.send_message(
                         chat_id=user.id,
-                        text=f"⏳ Cooldown!\n\n{since}/20 link geçti.\n{remaining} link daha bekle.\n\n"
-                             f"Şu an: #{emoji_counter}\nSenin: #{last_num}\n✅ #{last_num + 20}'dan sonra.\n\n{EMOJI_RULES}"
+                        text=f"⏳ Cooldown!\n\n"
+                             f"Son paylaşımından bu yana {since} link geçti.\n"
+                             f"Daha {remaining} link beklemen gerekiyor.\n\n"
+                             f"📊 Şu anki sayaç: #{emoji_counter}\n"
+                             f"🔢 Senin son paylaşımın: #{last_num}\n"
+                             f"✅ #{last_num + 15}'den sonra paylaşabilirsin.\n\n"
+                             f"📚 Kurallar: {EMOJI_RULES}"
                     )
                 except:
                     pass
@@ -314,95 +353,73 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     await context.bot.send_message(
                         chat_id=ADMIN_ID,
-                        text=f"⏳ [EMOJI] COOLDOWN\n\n@{username}\n{since}/20\n{remaining} kaldı\n\n{link}"
+                        text=f"⏳ COOLDOWN\n\n"
+                             f"@{username} (ID: {user.id})\n"
+                             f"📊 {since}/15 link geçmiş\n"
+                             f"⚠️ {remaining} link daha beklemeli\n\n"
+                             f"🔗 {link}"
                     )
                 except:
                     pass
                 
-                logger.info(f"[EMOJI] Cooldown: @{username} - {since}/20")
+                logger.info(f"Cooldown: @{username} - {since}/15")
                 return
         
-        # Emoji kontrolü
-        engaged = 0
-        required = min(len(emoji_last_messages), 20)
+        # ✅ TÜM KONTROLLER GEÇTİ
+        emoji_counter += 1
+        emoji_stats['links_shared'] += 1
         
-        for msg_data in emoji_last_messages[-20:]:
-            try:
-                reactions = await context.bot.get_message_reactions(GROUP_ID, msg_data['message_id'])
-                if reactions:
-                    for r in reactions:
-                        if r.user.id == user.id and r.emoji == "👍":
-                            engaged += 1
-                            break
-            except:
-                continue
+        # Günlük sayacı artır
+        emoji_user_daily_count[user.id] = emoji_user_daily_count.get(user.id, 0) + 1
         
-        if engaged >= required:
-            # Onaylandı
-            emoji_counter += 1
-            emoji_stats['links_shared'] += 1
+        await emoji_delete_old_rules(context)
+        
+        try:
+            sent = await context.bot.send_message(
+                chat_id=GROUP_ID,
+                message_thread_id=EMOJI_TOPIC_ID,
+                text=f"{emoji_counter}. 🔗 Link by @{username}\n\n{link}",
+                disable_web_page_preview=True
+            )
             
-            await emoji_delete_old_rules(context)
+            emoji_last_messages.append({
+                'message_id': sent.message_id,
+                'user_id': user.id,
+                'username': username,
+                'link': link,
+                'number': emoji_counter,
+                'timestamp': datetime.now()
+            })
             
-            try:
-                sent = await context.bot.send_message(
-                    chat_id=GROUP_ID,
-                    message_thread_id=EMOJI_TOPIC_ID,
-                    text=f"{emoji_counter}. 🔗 Link by @{username}\n\n{link}",
-                    disable_web_page_preview=True
-                )
-                
-                emoji_last_messages.append({
-                    'message_id': sent.message_id,
-                    'user_id': user.id,
-                    'username': username,
-                    'link': link,
-                    'number': emoji_counter,
-                    'timestamp': datetime.now()
-                })
-                
-                emoji_user_last_share[user.id] = emoji_counter
-                
-                if len(emoji_last_messages) > 30:
-                    emoji_last_messages.pop(0)
-                
-                logger.info(f"[EMOJI] Paylaşıldı: #{emoji_counter} - @{username}")
-            except Exception as e:
-                logger.error(f"[EMOJI] Hata: {e}")
+            emoji_user_last_share[user.id] = emoji_counter
             
-            await emoji_send_rules(context)
-        else:
-            # Emoji eksik
-            missing = required - engaged
-            emoji_stats['violations_emoji'] += 1
+            if len(emoji_last_messages) > 30:
+                emoji_last_messages.pop(0)
             
-            try:
-                await context.bot.send_message(
-                    chat_id=ADMIN_ID,
-                    text=f"❌ [EMOJI] EKSİK\n\n@{username}\n{engaged}/{required}\nEksik: {missing}\n\n{link}"
-                )
-            except:
-                pass
-            
-            try:
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=f"❌ Link paylaşılamadı!\n\n{engaged}/{required}\nEksik {missing} emoji.\n\n{EMOJI_RULES}"
-                )
-            except:
-                pass
-            
-            logger.warning(f"[EMOJI] Eksik: @{username} - {engaged}/{required}")
+            logger.info(f"Paylaşıldı: #{emoji_counter} - @{username} (Günlük: {emoji_user_daily_count[user.id]}/4)")
+        except Exception as e:
+            logger.error(f"Hata: {e}")
+        
+        await emoji_send_rules(context)
     
     # SAATLİ MOD (Topic 16848)
     elif topic_id == SAATLI_TOPIC_ID:
         logger.info(f"[SAATLİ] Link: @{username}")
+        
+        # SAATLİ MODDA MESAJ SİLME! (DÜZELTİLDİ)
+        # await update.message.delete() ← KALDIRILDI
         
         current_session = get_current_session()
         
         # Kanal açık mı?
         if not current_session:
             saatli_stats['rejected_closed'] += 1
+            
+            # Mesajı sil (kapalıysa)
+            try:
+                await update.message.delete()
+            except:
+                pass
             
             try:
                 now = datetime.now().time()
@@ -416,8 +433,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 await context.bot.send_message(
                     chat_id=user.id,
-                    text=f"⏰ Kapalı!\n\n🌅 Sabah: 10-12\n☀️ Öğle: 14-15\n🌙 Akşam: 21-22\n\n"
-                         f"Sonraki: {next_s['name']} ({next_s['start'].strftime('%H:%M')})"
+                    text=f"⏰ Kanal şu an kapalı!\n\n"
+                         f"📅 SEANSLAR:\n"
+                         f"🌅 Sabah: 10:00-12:00\n"
+                         f"☀️ Öğle: 14:00-15:00\n"
+                         f"🌙 Akşam: 21:00-22:00\n\n"
+                         f"⏰ Bir sonraki seans: {next_s['name']} ({next_s['start'].strftime('%H:%M')})"
                 )
             except:
                 pass
@@ -429,10 +450,18 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if link in saatli_all_time_links:
             saatli_stats['rejected_duplicate'] += 1
             
+            # Mesajı sil (duplicate)
+            try:
+                await update.message.delete()
+            except:
+                pass
+            
             try:
                 await context.bot.send_message(
                     chat_id=user.id,
-                    text=f"❌ Bu link daha önce paylaşıldı!\n\n{SAATLI_RULES}"
+                    text=f"❌ Bu link daha önce paylaşıldı!\n\n"
+                         f"Her link sadece 1 kez paylaşılabilir.\n\n"
+                         f"📚 Kurallar: {SAATLI_RULES}"
                 )
             except:
                 pass
@@ -444,10 +473,18 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user.id in saatli_session_data[current_session]['users']:
             saatli_stats['rejected_session_limit'] += 1
             
+            # Mesajı sil (seans limiti)
+            try:
+                await update.message.delete()
+            except:
+                pass
+            
             try:
                 await context.bot.send_message(
                     chat_id=user.id,
-                    text=f"❌ Bu seansta zaten paylaştın!\n\n{SAATLI_RULES}"
+                    text=f"❌ Bu seansta zaten paylaşım yaptın!\n\n"
+                         f"Her seansta sadece 1 link paylaşabilirsin.\n\n"
+                         f"📚 Kurallar: {SAATLI_RULES}"
                 )
             except:
                 pass
@@ -455,31 +492,22 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"[SAATLİ] Seans dup: @{username}")
             return
         
-        # Onaylandı
+        # ✅ ONAYLANDI - MESAJ SİLİNMEDİ, KAYIT EDİLDİ
         saatli_stats['links_shared'] += 1
         
-        try:
-            sent = await context.bot.send_message(
-                chat_id=GROUP_ID,
-                message_thread_id=SAATLI_TOPIC_ID,
-                text=f"🔗 Link by @{username}\n\n{link}",
-                disable_web_page_preview=True
-            )
-            
-            saatli_session_data[current_session]['links'].append({
-                'message_id': sent.message_id,
-                'user_id': user.id,
-                'username': username,
-                'link': link,
-                'timestamp': datetime.now()
-            })
-            
-            saatli_session_data[current_session]['users'].add(user.id)
-            saatli_all_time_links.add(link)
-            
-            logger.info(f"[SAATLİ] Paylaşıldı: @{username} - {current_session}")
-        except Exception as e:
-            logger.error(f"[SAATLİ] Hata: {e}")
+        # Mesaj ID'sini kaydet (kendi mesajını)
+        saatli_session_data[current_session]['links'].append({
+            'message_id': update.message.message_id,
+            'user_id': user.id,
+            'username': username,
+            'link': link,
+            'timestamp': datetime.now()
+        })
+        
+        saatli_session_data[current_session]['users'].add(user.id)
+        saatli_all_time_links.add(link)
+        
+        logger.info(f"[SAATLİ] Kayıt edildi: @{username} - {current_session}")
 
 async def post_init(application):
     asyncio.create_task(emoji_schedule_reset(application))
@@ -498,8 +526,8 @@ def main():
     logger.info("BİRLEŞİK BOT BAŞLATILDI")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info(f"Group ID: {GROUP_ID}")
-    logger.info(f"Emoji Topic: {EMOJI_TOPIC_ID}")
-    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID}")
+    logger.info(f"Emoji Topic: {EMOJI_TOPIC_ID} (15 link cooldown, 4/gün limit)")
+    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (mesaj silinmez)")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
     
