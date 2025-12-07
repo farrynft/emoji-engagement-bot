@@ -41,11 +41,11 @@ emoji_stats = {
     'date': now_turkey().date()
 }
 
-# SAATLİ MOD STATE
+# SAATLİ MOD STATE - YENİ SEANS SAATLERİ
 SESSIONS = [
-    {'name': 'Sabah', 'start': dt_time(10, 0), 'end': dt_time(12, 0)},
-    {'name': 'Öğle', 'start': dt_time(14, 0), 'end': dt_time(15, 0)},
-    {'name': 'Akşam', 'start': dt_time(21, 0), 'end': dt_time(22, 0)}
+    {'name': 'Sabah', 'start': dt_time(9, 50), 'end': dt_time(12, 10)},
+    {'name': 'Öğle', 'start': dt_time(13, 50), 'end': dt_time(15, 10)},
+    {'name': 'Akşam', 'start': dt_time(20, 50), 'end': dt_time(22, 10)}
 ]
 
 saatli_session_data = {
@@ -54,11 +54,8 @@ saatli_session_data = {
     'Akşam': {'links': [], 'users': set(), 'date': None}
 }
 
-saatli_all_time_links = set()
 saatli_stats = {
     'links_shared': 0,
-    'rejected_duplicate': 0,
-    'rejected_session_limit': 0,
     'rejected_closed': 0,
     'date': now_turkey().date()
 }
@@ -170,8 +167,6 @@ def reset_saatli_stats():
     global saatli_stats
     saatli_stats = {
         'links_shared': 0,
-        'rejected_duplicate': 0,
-        'rejected_session_limit': 0,
         'rejected_closed': 0,
         'date': now_turkey().date()
     }
@@ -220,8 +215,6 @@ async def saatli_daily_report(context):
 
 📈 İSTATİSTİKLER:
    ✅ Paylaşılan: {saatli_stats['links_shared']}
-   ❌ Duplicate: {saatli_stats['rejected_duplicate']}
-   ❌ Seans limiti: {saatli_stats['rejected_session_limit']}
    ⏰ Kapalı saat: {saatli_stats['rejected_closed']}
 
 ━━━━━━━━━━━━━━━━━━━━
@@ -433,7 +426,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         link = urls[0]
         logger.info(f"[SAATLİ] Link: @{username}")
         
-        # YÖNETİCİ KONTROLÜ - ARTIK SADECE MESAJ SİLME İÇİN
+        # YÖNETİCİ KONTROLÜ
         user_is_admin = await is_admin(context, user.id)
         if user_is_admin:
             logger.info(f"[SAATLİ] Yönetici mesajı tespit edildi: @{username}")
@@ -465,9 +458,9 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=user.id,
                     text=f"⏰ Kanal şu an kapalı!\n\n"
                          f"📅 SEANSLAR:\n"
-                         f"🌅 Sabah: 10:00-12:00\n"
-                         f"☀️ Öğle: 14:00-15:00\n"
-                         f"🌙 Akşam: 21:00-22:00\n\n"
+                         f"🌅 Sabah: 09:50-12:10\n"
+                         f"☀️ Öğle: 13:50-15:10\n"
+                         f"🌙 Akşam: 20:50-22:10\n\n"
                          f"⏰ Bir sonraki seans: {next_s['name']} ({next_s['start'].strftime('%H:%M')})"
                 )
             except:
@@ -476,55 +469,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.info(f"[SAATLİ] Kapalı: @{username}")
             return
         
-        # Duplicate kontrolü
-        if link in saatli_all_time_links:
-            saatli_stats['rejected_duplicate'] += 1
-            
-            # SADECE YÖNETİCİ DEĞİLSE SİL
-            if not user_is_admin:
-                try:
-                    await update.message.delete()
-                except:
-                    pass
-            
-            try:
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=f"❌ Bu link daha önce paylaşıldı!\n\n"
-                         f"Her link sadece 1 kez paylaşılabilir.\n\n"
-                         f"📚 Kurallar: {SAATLI_RULES}"
-                )
-            except:
-                pass
-            
-            logger.info(f"[SAATLİ] Duplicate: @{username}")
-            return
-        
-        # Seans limiti
-        if user.id in saatli_session_data[current_session]['users']:
-            saatli_stats['rejected_session_limit'] += 1
-            
-            # SADECE YÖNETİCİ DEĞİLSE SİL
-            if not user_is_admin:
-                try:
-                    await update.message.delete()
-                except:
-                    pass
-            
-            try:
-                await context.bot.send_message(
-                    chat_id=user.id,
-                    text=f"❌ Bu seansta zaten paylaşım yaptın!\n\n"
-                         f"Her seansta sadece 1 link paylaşabilirsin.\n\n"
-                         f"📚 Kurallar: {SAATLI_RULES}"
-                )
-            except:
-                pass
-            
-            logger.info(f"[SAATLİ] Seans dup: @{username}")
-            return
-        
-        # ✅ ONAYLANDI - KAYIT EDİLDİ (YÖNETİCİ OLSA DAHİ)
+        # ✅ ONAYLANDI - KAYIT EDİLDİ (HİÇBİR KONTROL YOK)
         saatli_stats['links_shared'] += 1
         
         # Mesaj ID'sini kaydet
@@ -538,7 +483,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         })
         
         saatli_session_data[current_session]['users'].add(user.id)
-        saatli_all_time_links.add(link)
         
         admin_tag = " (MOD)" if user_is_admin else ""
         logger.info(f"[SAATLİ] Kayıt edildi: @{username}{admin_tag} - {current_session}")
@@ -561,9 +505,9 @@ def main():
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info(f"Group ID: {GROUP_ID}")
     logger.info(f"Emoji Topic: {EMOJI_TOPIC_ID} (15 link cooldown, 4/gün limit)")
-    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (yönetici mesajları ÖZETE DAHİL)")
+    logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (DUPLICATE VE LIMIT KONTROLÜ YOK)")
     logger.info(f"Timezone: UTC+3 (Türkiye)")
-    logger.info(f"Filter: Sadece text mesajlar")
+    logger.info(f"Seans saatleri: 09:50-12:10, 13:50-15:10, 20:50-22:10")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
     
