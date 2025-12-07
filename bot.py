@@ -44,11 +44,11 @@ emoji_stats = {
     'date': now_turkey().date()
 }
 
-# SAATLİ MOD STATE - YENİ SEANS SAATLERİ
+# SAATLİ MOD STATE - YENİ SEANS SAATLERİ (BİTİŞ xx:01)
 SESSIONS = [
-    {'name': 'Sabah', 'start': dt_time(9, 50), 'end': dt_time(12, 10)},
-    {'name': 'Öğle', 'start': dt_time(13, 50), 'end': dt_time(15, 10)},
-    {'name': 'Akşam', 'start': dt_time(20, 50), 'end': dt_time(22, 10)}
+    {'name': 'Sabah', 'start': dt_time(9, 50), 'end': dt_time(12, 1)},
+    {'name': 'Öğle', 'start': dt_time(13, 50), 'end': dt_time(15, 1)},
+    {'name': 'Akşam', 'start': dt_time(20, 50), 'end': dt_time(22, 1)}
 ]
 
 saatli_session_data = {
@@ -476,9 +476,9 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     chat_id=user.id,
                     text=f"⏰ Kanal şu an kapalı!\n\n"
                          f"📅 SEANSLAR:\n"
-                         f"🌅 Sabah: 09:50-12:10\n"
-                         f"☀️ Öğle: 13:50-15:10\n"
-                         f"🌙 Akşam: 20:50-22:10\n\n"
+                         f"🌅 Sabah: 09:50-12:01\n"
+                         f"☀️ Öğle: 13:50-15:01\n"
+                         f"🌙 Akşam: 20:50-22:01\n\n"
                          f"⏰ Bir sonraki seans: {next_s['name']} ({next_s['start'].strftime('%H:%M')})"
                 )
             except:
@@ -525,7 +525,7 @@ def main():
     logger.info(f"Emoji Topic: {EMOJI_TOPIC_ID} (15 link cooldown, 4/gün limit)")
     logger.info(f"Saatli Topic: {SAATLI_TOPIC_ID} (DUPLICATE VE LIMIT KONTROLÜ YOK)")
     logger.info(f"Timezone: UTC+3 (Türkiye)")
-    logger.info(f"Seans saatleri: 09:50-12:10, 13:50-15:10, 20:50-22:10")
+    logger.info(f"Seans saatleri: 09:50-12:01, 13:50-15:01, 20:50-22:01")
     logger.info(f"Bot başlangıç: {BOT_START_TIME.strftime('%d.%m.%Y %H:%M:%S')}")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
