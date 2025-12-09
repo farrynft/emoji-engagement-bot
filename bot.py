@@ -186,8 +186,36 @@ async def saatli_session_summary(context, session_name):
         reset_saatli_session(session_name)
         return
     
-    summary = ""
+    # ✅ HER USER İÇİN SADECE SON LİNKİ AL
+    user_latest_links = {}
+    
     for link_data in session['links']:
+        # Edit ile silindi mi kontrol et
+        if link_data.get('deleted', False):
+            logger.info(f"[{session_name}] Düzenleme ile kaldırılan link atlandı: {link_data['message_id']}")
+            continue
+        
+        user_id = link_data['user_id']
+        
+        # Bu kullanıcının daha önce kaydı var mı?
+        if user_id in user_latest_links:
+            # Timestamp karşılaştır, daha yeni olanı tut
+            if link_data['timestamp'] > user_latest_links[user_id]['timestamp']:
+                logger.info(f"[{session_name}] {link_data['username']} için eski link yerine yeni link: {link_data['link']}")
+                user_latest_links[user_id] = link_data
+        else:
+            user_latest_links[user_id] = link_data
+    
+    if not user_latest_links:
+        logger.info(f"{session_name} seansında geçerli link kalmadı")
+        reset_saatli_session(session_name)
+        return
+    
+    # Timestamp'e göre sırala (kronolojik)
+    sorted_links = sorted(user_latest_links.values(), key=lambda x: x['timestamp'])
+    
+    summary = ""
+    for link_data in sorted_links:
         summary += f"{link_data['link']}\n"
     
     try:
@@ -197,7 +225,7 @@ async def saatli_session_summary(context, session_name):
             text=summary,
             disable_web_page_preview=True
         )
-        logger.info(f"{session_name} özeti gönderildi: {len(session['links'])} link")
+        logger.info(f"{session_name} özeti gönderildi: {len(sorted_links)} link")
     except Exception as e:
         logger.error(f"Özet hatası: {e}")
     
@@ -273,6 +301,46 @@ async def saatli_schedule_sessions(application):
         
         if session_name == 'Akşam':
             await saatli_daily_report(application)
+
+# ✅ YENİ: MESAJ EDİT HANDLER
+async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Düzenlenen mesajları yakala ve linki güncelle"""
+    if not update.edited_message:
+        return
+    
+    if not update.edited_message.text:
+        return
+    
+    if update.edited_message.chat.id != GROUP_ID:
+        return
+    
+    topic_id = update.edited_message.message_thread_id
+    
+    if topic_id != SAATLI_TOPIC_ID:
+        return
+    
+    message_id = update.edited_message.message_id
+    text = update.edited_message.text
+    
+    # Yeni linki bul
+    urls = re.findall(r'https?://(?:twitter|x)\.com/\S+/status/\d+', text)
+    new_link = urls[0] if urls else None
+    
+    # Tüm seanslarda bu message_id'yi bul ve güncelle
+    for session_name, session in saatli_session_data.items():
+        for link_data in session['links']:
+            if link_data['message_id'] == message_id:
+                old_link = link_data['link']
+                if new_link:
+                    link_data['link'] = new_link
+                    logger.info(f"[SAATLİ] Link güncellendi: {message_id} ({session_name})")
+                    logger.info(f"  Eski: {old_link}")
+                    logger.info(f"  Yeni: {new_link}")
+                else:
+                    # Link kaldırılmış, silindi olarak işaretle
+                    link_data['deleted'] = True
+                    logger.info(f"[SAATLİ] Link kaldırıldı: {message_id} ({session_name})")
+                break
 
 # ANA HANDLER
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -497,7 +565,8 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'username': username,
             'link': link,
             'timestamp': now_turkey(),
-            'is_admin': user_is_admin
+            'is_admin': user_is_admin,
+            'deleted': False  # ✅ Silindi flag'i
         })
         
         saatli_session_data[message_session]['users'].add(user.id)
@@ -513,9 +582,16 @@ async def post_init(application):
 def main():
     app = Application.builder().token(TOKEN).post_init(post_init).build()
     
+    # Normal mesaj handler
     app.add_handler(MessageHandler(
         filters.TEXT & filters.Regex(r'https?://(?:twitter|x)\.com'),
         handle_link
+    ))
+    
+    # ✅ Edit handler
+    app.add_handler(MessageHandler(
+        filters.UpdateType.EDITED_MESSAGE,
+        handle_message_edit
     ))
     
     logger.info("")
@@ -527,6 +603,7 @@ def main():
     logger.info(f"Timezone: UTC+3 (Türkiye)")
     logger.info(f"Seans saatleri: 09:50-12:01, 13:50-15:01, 20:50-22:01")
     logger.info(f"Bot başlangıç: {BOT_START_TIME.strftime('%d.%m.%Y %H:%M:%S')}")
+    logger.info("✅ Her kullanıcı için SADECE SON link özete eklenir")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
     
