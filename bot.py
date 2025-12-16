@@ -29,7 +29,7 @@ EMOJI_TOPIC_ID = 33348
 SAATLI_TOPIC_ID = 16848
 
 EMOJI_RULES = "https://t.me/zaxengage/12/33361"
-SAATLI_RULES = "https://t.me/zaxengage/12/26852"
+SAATLI_RULES = "https://t.me/xreplify/12/26853"
 
 # EMOJİ MODU STATE
 emoji_last_messages = []
@@ -611,3 +611,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
