@@ -63,6 +63,13 @@ saatli_stats = {
     'date': now_turkey().date()
 }
 
+# Son özet gönderilen seans ve tarih (aynı seansı tekrar göndermemek için)
+last_summary_sent = {
+    'Sabah': None,
+    'Öğle': None,
+    'Akşam': None
+}
+
 EMOJI_RULES_TEXT = """
 📚 Check rules / Kuralları kontrol et:
 {rules_channel}
@@ -260,47 +267,58 @@ async def saatli_daily_report(context):
     reset_saatli_stats()
 
 async def saatli_schedule_sessions(application):
+    """
+    Her 30 saniyede bir kontrol eden polling-based scheduler.
+    Bu yaklaşım daha güvenilir çünkü:
+    - Uzun sleep yerine kısa aralıklarla kontrol
+    - Bot restart olsa bile hemen toparlanır
+    - Exception olursa log düşer ve devam eder
+    """
+    global last_summary_sent
+    
+    logger.info("Saatli mod scheduler başlatıldı (30 saniyelik polling)")
+    
     while True:
-        now = now_turkey()
-        next_event = None
-        next_event_type = None
-        
-        for session in SESSIONS:
-            end_datetime = now.replace(
-                hour=session['end'].hour,
-                minute=session['end'].minute,
-                second=0,
-                microsecond=0
-            )
+        try:
+            now = now_turkey()
+            today = now.date()
+            current_time = now.time()
             
-            if now < end_datetime:
-                if next_event is None or end_datetime < next_event:
-                    next_event = end_datetime
-                    next_event_type = ('end', session['name'])
-        
-        if next_event is None:
-            tomorrow = now + timedelta(days=1)
-            next_event = tomorrow.replace(
-                hour=SESSIONS[0]['end'].hour,
-                minute=SESSIONS[0]['end'].minute,
-                second=0,
-                microsecond=0
-            )
-            next_event_type = ('end', SESSIONS[0]['name'])
-        
-        wait_seconds = (next_event - now).total_seconds()
-        logger.info(f"Saatli mod sonraki: {next_event_type[1]} - {next_event.strftime('%d.%m %H:%M')}")
-        
-        await asyncio.sleep(wait_seconds)
-        
-        event_type, session_name = next_event_type
-        
-        if event_type == 'end':
-            logger.info(f"{session_name} bitti, özet gönderiliyor...")
-            await saatli_session_summary(application, session_name)
-        
-        if session_name == 'Akşam':
-            await saatli_daily_report(application)
+            # Her seans için kontrol et
+            for session in SESSIONS:
+                session_name = session['name']
+                end_time = session['end']
+                
+                # Seans bitiş zamanı geçti mi?
+                # end_time'dan 1 dakika sonrasına kadar kontrol et (22:01 -> 22:02 arası)
+                end_datetime = now.replace(
+                    hour=end_time.hour,
+                    minute=end_time.minute,
+                    second=0,
+                    microsecond=0
+                )
+                
+                # Bitiş zamanı geçti ve henüz bugün özet gönderilmedi mi?
+                if current_time >= end_time:
+                    if last_summary_sent[session_name] != today:
+                        logger.info(f"[SCHEDULER] {session_name} seansı bitti, özet gönderiliyor...")
+                        await saatli_session_summary(application, session_name)
+                        last_summary_sent[session_name] = today
+                        logger.info(f"[SCHEDULER] {session_name} özeti gönderildi, tarih kaydedildi: {today}")
+                        
+                        # Akşam seansı bittiyse günlük rapor gönder
+                        if session_name == 'Akşam':
+                            await saatli_daily_report(application)
+            
+            # 30 saniye bekle
+            await asyncio.sleep(30)
+            
+        except Exception as e:
+            logger.error(f"[SCHEDULER] Hata oluştu: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Hata olsa bile devam et
+            await asyncio.sleep(30)
 
 # ✅ YENİ: MESAJ EDİT HANDLER
 async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -604,6 +622,7 @@ def main():
     logger.info(f"Seans saatleri: 09:50-12:01, 13:50-15:01, 20:50-22:01")
     logger.info(f"Bot başlangıç: {BOT_START_TIME.strftime('%d.%m.%Y %H:%M:%S')}")
     logger.info("✅ Her kullanıcı için SADECE SON link özete eklenir")
+    logger.info("✅ Scheduler: 30 saniyelik polling (daha güvenilir)")
     logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
     logger.info("")
     
