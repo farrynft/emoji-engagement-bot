@@ -188,8 +188,11 @@ def reset_saatli_stats():
 async def saatli_session_summary(context, session_name):
     session = saatli_session_data[session_name]
     
+    logger.info(f"[ÖZET] {session_name} seansı için özet hazırlanıyor...")
+    logger.info(f"[ÖZET] Toplam kayıtlı mesaj sayısı: {len(session['links'])}")
+    
     if not session['links']:
-        logger.info(f"{session_name} seansında link yok")
+        logger.info(f"[ÖZET] {session_name} seansında link yok")
         reset_saatli_session(session_name)
         return
     
@@ -199,7 +202,7 @@ async def saatli_session_summary(context, session_name):
     for link_data in session['links']:
         # Edit ile silindi mi kontrol et
         if link_data.get('deleted', False):
-            logger.info(f"[{session_name}] Düzenleme ile kaldırılan link atlandı: {link_data['message_id']}")
+            logger.info(f"[ÖZET] ❌ Atlanan (silindi): @{link_data['username']} - msg_id:{link_data['message_id']}")
             continue
         
         user_id = link_data['user_id']
@@ -208,18 +211,26 @@ async def saatli_session_summary(context, session_name):
         if user_id in user_latest_links:
             # Timestamp karşılaştır, daha yeni olanı tut
             if link_data['timestamp'] > user_latest_links[user_id]['timestamp']:
-                logger.info(f"[{session_name}] {link_data['username']} için eski link yerine yeni link: {link_data['link']}")
+                old_link = user_latest_links[user_id]['link']
+                logger.info(f"[ÖZET] 🔄 @{link_data['username']} için eski link değiştirildi")
+                logger.info(f"[ÖZET]    Eski: {old_link}")
+                logger.info(f"[ÖZET]    Yeni: {link_data['link']}")
                 user_latest_links[user_id] = link_data
         else:
             user_latest_links[user_id] = link_data
     
     if not user_latest_links:
-        logger.info(f"{session_name} seansında geçerli link kalmadı")
+        logger.info(f"[ÖZET] {session_name} seansında geçerli link kalmadı")
         reset_saatli_session(session_name)
         return
     
     # Timestamp'e göre sırala (kronolojik)
     sorted_links = sorted(user_latest_links.values(), key=lambda x: x['timestamp'])
+    
+    # Özete gidecek linkleri logla
+    logger.info(f"[ÖZET] ✅ Özete eklenecek {len(sorted_links)} link:")
+    for i, link_data in enumerate(sorted_links, 1):
+        logger.info(f"[ÖZET]    {i}. @{link_data['username']}: {link_data['link']}")
     
     summary = ""
     for link_data in sorted_links:
@@ -232,9 +243,9 @@ async def saatli_session_summary(context, session_name):
             text=summary,
             disable_web_page_preview=True
         )
-        logger.info(f"{session_name} özeti gönderildi: {len(sorted_links)} link")
+        logger.info(f"[ÖZET] ✅ {session_name} özeti başarıyla gönderildi: {len(sorted_links)} link")
     except Exception as e:
-        logger.error(f"Özet hatası: {e}")
+        logger.error(f"[ÖZET] ❌ Özet gönderme hatası: {e}")
     
     try:
         await context.bot.send_message(
@@ -339,26 +350,43 @@ async def handle_message_edit(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     message_id = update.edited_message.message_id
     text = update.edited_message.text
+    user = update.edited_message.from_user
+    username = user.username or user.first_name if user else "Unknown"
+    
+    logger.info(f"[EDİT] Mesaj düzenlendi: @{username} (msg_id: {message_id})")
     
     # Yeni linki bul
     urls = re.findall(r'https?://(?:twitter|x)\.com/\S+/status/\d+', text)
     new_link = urls[0] if urls else None
     
+    logger.info(f"[EDİT] Yeni içerik: {new_link if new_link else 'Link yok'}")
+    
     # Tüm seanslarda bu message_id'yi bul ve güncelle
+    found = False
     for session_name, session in saatli_session_data.items():
         for link_data in session['links']:
             if link_data['message_id'] == message_id:
+                found = True
                 old_link = link_data['link']
                 if new_link:
-                    link_data['link'] = new_link
-                    logger.info(f"[SAATLİ] Link güncellendi: {message_id} ({session_name})")
-                    logger.info(f"  Eski: {old_link}")
-                    logger.info(f"  Yeni: {new_link}")
+                    if old_link != new_link:
+                        link_data['link'] = new_link
+                        link_data['timestamp'] = now_turkey()  # Timestamp güncelle
+                        logger.info(f"[EDİT] ✅ Link güncellendi: {session_name}")
+                        logger.info(f"[EDİT]    Eski: {old_link}")
+                        logger.info(f"[EDİT]    Yeni: {new_link}")
+                    else:
+                        logger.info(f"[EDİT] Link aynı, değişiklik yok")
                 else:
                     # Link kaldırılmış, silindi olarak işaretle
                     link_data['deleted'] = True
-                    logger.info(f"[SAATLİ] Link kaldırıldı: {message_id} ({session_name})")
+                    logger.info(f"[EDİT] ⚠️ Link kaldırıldı, özetten çıkarılacak: {session_name}")
                 break
+        if found:
+            break
+    
+    if not found:
+        logger.info(f"[EDİT] ℹ️ Message_id kayıtlı değil, muhtemelen seans dışında atılmıştı")
 
 # ANA HANDLER
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -606,9 +634,9 @@ def main():
         handle_link
     ))
     
-    # ✅ Edit handler
+    # ✅ Edit handler - TÜM text edit'lerini yakala
     app.add_handler(MessageHandler(
-        filters.UpdateType.EDITED_MESSAGE,
+        filters.UpdateType.EDITED_MESSAGE & filters.TEXT,
         handle_message_edit
     ))
     
